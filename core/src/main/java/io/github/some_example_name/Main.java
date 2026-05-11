@@ -2,12 +2,17 @@ package io.github.some_example_name;
 
 import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.assets.AssetManager;
+import com.badlogic.gdx.audio.Music;
+import com.badlogic.gdx.audio.Sound;
+import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.ScreenUtils;
 
 public class Main extends ApplicationAdapter {
@@ -15,10 +20,19 @@ public class Main extends ApplicationAdapter {
     private BitmapFont font;
     private AssetManager manager;
     private GameWorld world;
+    private OrthographicCamera camera;
+
     private boolean loaded;
     private boolean assetsReady;
     private float displayProgress;
+
     private Texture bloonTexture, dartTexture, towerTexture, pathTexture, loadingTexture;
+    private Music bgMusic;
+
+    private static final float CAMERA_SPEED = 300f;
+    private static final float ZOOM_SPEED = 0.1f;
+    private static final float MIN_ZOOM = 0.5f;
+    private static final float MAX_ZOOM = 2.0f;
 
     @Override
     public void create() {
@@ -29,11 +43,20 @@ public class Main extends ApplicationAdapter {
         displayProgress = 0f;
         loadingTexture = new Texture(Gdx.files.internal("path.png"));
 
+        float w = Gdx.graphics.getWidth();
+        float h = Gdx.graphics.getHeight();
+        camera = new OrthographicCamera(w, h);
+        camera.position.set(w / 2f, h / 2f, 0);
+        camera.update();
+
         manager = new AssetManager();
         manager.load("bloon_red.png", Texture.class);
         manager.load("dart.png", Texture.class);
         manager.load("tower.png", Texture.class);
         manager.load("path.png", Texture.class);
+        manager.load("shoot.ogg", Sound.class);
+        manager.load("pop.ogg", Sound.class);
+        manager.load("bgmusic.mp3", Music.class);
     }
 
     @Override
@@ -41,6 +64,7 @@ public class Main extends ApplicationAdapter {
         if (!loaded) {
             renderLoading();
         } else {
+            updateCamera(Gdx.graphics.getDeltaTime());
             renderGame();
         }
     }
@@ -55,20 +79,7 @@ public class Main extends ApplicationAdapter {
         if (displayProgress > 0.99f) displayProgress = 1f;
 
         if (assetsReady && displayProgress >= 1f) {
-            bloonTexture = manager.get("bloon_red.png", Texture.class);
-            dartTexture = manager.get("dart.png", Texture.class);
-            towerTexture = manager.get("tower.png", Texture.class);
-            pathTexture = manager.get("path.png", Texture.class);
-            world = new GameWorld(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-
-            Gdx.input.setInputProcessor(new InputAdapter() {
-                @Override
-                public boolean touchDown(int screenX, int screenY, int pointer, int button) {
-                    world.addTower(screenX, Gdx.graphics.getHeight() - screenY);
-                    return true;
-                }
-            });
-
+            initGame();
             loaded = true;
             return;
         }
@@ -96,9 +107,74 @@ public class Main extends ApplicationAdapter {
         batch.end();
     }
 
+    private void initGame() {
+        bloonTexture = manager.get("bloon_red.png", Texture.class);
+        dartTexture = manager.get("dart.png", Texture.class);
+        towerTexture = manager.get("tower.png", Texture.class);
+        pathTexture = manager.get("path.png", Texture.class);
+
+        Dart.setShootSound(manager.get("shoot.ogg", Sound.class));
+        Bloon.setPopSound(manager.get("pop.ogg", Sound.class));
+
+        bgMusic = manager.get("bgmusic.mp3", Music.class);
+        bgMusic.setLooping(true);
+        bgMusic.setVolume(0.15f);
+        bgMusic.play();
+
+        world = new GameWorld(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+
+        Gdx.input.setInputProcessor(new InputAdapter() {
+            @Override
+            public boolean touchDown(int screenX, int screenY, int pointer, int button) {
+                Vector3 worldCoords = new Vector3(screenX, screenY, 0);
+                camera.unproject(worldCoords);
+                world.addTower(worldCoords.x, worldCoords.y);
+                return true;
+            }
+
+            @Override
+            public boolean scrolled(float amountX, float amountY) {
+                camera.zoom += amountY * ZOOM_SPEED;
+                if (camera.zoom < MIN_ZOOM) camera.zoom = MIN_ZOOM;
+                if (camera.zoom > MAX_ZOOM) camera.zoom = MAX_ZOOM;
+                return true;
+            }
+        });
+    }
+
+    private void updateCamera(float delta) {
+        if (Gdx.input.isKeyPressed(Input.Keys.W)) {
+            camera.position.y += CAMERA_SPEED * delta;
+        }
+        if (Gdx.input.isKeyPressed(Input.Keys.S)) {
+            camera.position.y -= CAMERA_SPEED * delta;
+        }
+        if (Gdx.input.isKeyPressed(Input.Keys.A)) {
+            camera.position.x -= CAMERA_SPEED * delta;
+        }
+        if (Gdx.input.isKeyPressed(Input.Keys.D)) {
+            camera.position.x += CAMERA_SPEED * delta;
+        }
+
+        if (Gdx.input.isKeyPressed(Input.Keys.UP)) {
+            float vol = bgMusic.getVolume() + 0.5f * delta;
+            if (vol > 1f) vol = 1f;
+            bgMusic.setVolume(vol);
+        }
+        if (Gdx.input.isKeyPressed(Input.Keys.DOWN)) {
+            float vol = bgMusic.getVolume() - 0.5f * delta;
+            if (vol < 0f) vol = 0f;
+            bgMusic.setVolume(vol);
+        }
+
+        camera.update();
+    }
+
     private void renderGame() {
         world.update(Gdx.graphics.getDeltaTime());
         ScreenUtils.clear(0.3f, 0.6f, 0.2f, 1f);
+
+        batch.setProjectionMatrix(camera.combined);
         batch.begin();
 
         Vector2[] wp = world.waypoints;
@@ -119,9 +195,14 @@ public class Main extends ApplicationAdapter {
         for (int i = 0; i < world.activeBloons.size; i++) {
             Bloon bloon = world.activeBloons.get(i);
             if (bloon.alive) {
+                if (bloon.isInvulnerable()) {
+                    float alpha = ((int) (bloon.getSpawnTimer() * 10)) % 2 == 0 ? 1f : 0.3f;
+                    batch.setColor(1f, 1f, 1f, alpha);
+                }
                 batch.draw(bloonTexture,
                     bloon.position.x - bloonTexture.getWidth() / 2f,
                     bloon.position.y - bloonTexture.getHeight() / 2f);
+                batch.setColor(1f, 1f, 1f, 1f);
             }
         }
 
@@ -137,12 +218,30 @@ public class Main extends ApplicationAdapter {
             }
         }
 
-        float h = Gdx.graphics.getHeight();
-        font.draw(batch, "Vidas: " + world.lives + "  Pontos: " + world.score, 10, h - 10);
-        font.draw(batch, "Pool bloons livres: " + world.bloonPool.getFree()
-            + " | Pool dardos livres: " + world.dartPool.getFree(), 10, h - 30);
-        font.draw(batch, "Bloons ativos: " + world.activeBloons.size
-            + " | Dardos ativos: " + world.activeDarts.size, 10, h - 50);
+        batch.end();
+
+        batch.setProjectionMatrix(batch.getProjectionMatrix().idt());
+        float screenW = Gdx.graphics.getWidth();
+        float screenH = Gdx.graphics.getHeight();
+        batch.getProjectionMatrix().setToOrtho2D(0, 0, screenW, screenH);
+        batch.begin();
+
+        font.draw(batch, "Vidas: " + world.lives + "  Pontos: " + world.score, 10, screenH - 10);
+        font.draw(batch, "Pool bloons: " + world.bloonPool.getFree()
+            + " | Pool darts: " + world.dartPool.getFree(), 10, screenH - 30);
+        font.draw(batch, "Zoom: " + String.format("%.1f", camera.zoom)
+            + " | Cam: (" + (int) camera.position.x + ", " + (int) camera.position.y + ")", 10, screenH - 50);
+        font.draw(batch, "WASD: camera | Scroll: zoom | UP/DOWN: volume ("
+            + (int)(bgMusic.getVolume() * 100) + "%)", 10, screenH - 70);
+
+        for (int i = 0; i < world.floatingScores.size; i++) {
+            FloatingScore fs = world.floatingScores.get(i);
+            Vector3 screenPos = new Vector3(fs.position.x, fs.position.y, 0);
+            camera.project(screenPos);
+            font.setColor(1f, 1f, 0f, fs.getAlpha());
+            font.draw(batch, fs.text, screenPos.x, screenPos.y);
+        }
+        font.setColor(1f, 1f, 1f, 1f);
 
         batch.end();
     }

@@ -10,6 +10,7 @@ public class GameWorld {
     public final Array<Bloon> activeBloons = new Array<Bloon>();
     public final Array<Dart> activeDarts = new Array<Dart>();
     public final Array<Tower> towers = new Array<Tower>();
+    public final Array<FloatingScore> floatingScores = new Array<FloatingScore>();
 
     public final Pool<Bloon> bloonPool = new Pool<Bloon>() {
         @Override
@@ -88,12 +89,14 @@ public class GameWorld {
             if (dart.alive) {
                 for (int j = activeBloons.size - 1; j >= 0; j--) {
                     Bloon bloon = activeBloons.get(j);
-                    if (!bloon.alive) continue;
+                    if (!bloon.alive || bloon.isInvulnerable()) continue;
                     if (dart.position.dst(bloon.position) < 20f) {
                         bloon.hit();
                         dart.alive = false;
                         if (!bloon.alive) {
                             score += 10;
+                            floatingScores.add(new FloatingScore(
+                                bloon.position.x, bloon.position.y, "+10", 1f));
                             activeBloons.removeIndex(j);
                             bloonPool.free(bloon);
                         }
@@ -105,6 +108,14 @@ public class GameWorld {
             if (!dart.alive) {
                 activeDarts.removeIndex(i);
                 dartPool.free(dart);
+            }
+        }
+
+        for (int i = floatingScores.size - 1; i >= 0; i--) {
+            FloatingScore fs = floatingScores.get(i);
+            fs.update(delta);
+            if (!fs.alive) {
+                floatingScores.removeIndex(i);
             }
         }
     }

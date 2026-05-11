@@ -1,10 +1,17 @@
 package io.github.some_example_name;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Pool;
 
 public class Dart implements Pool.Poolable {
+    private static Sound shootSound;
+
+    public static void setShootSound(Sound sound) {
+        shootSound = sound;
+    }
+
     public final Vector2 position;
     public final Vector2 direction;
     public boolean alive;
@@ -31,6 +38,10 @@ public class Dart implements Pool.Poolable {
         alive = true;
         speed = 300f;
         angle = (float) Math.toDegrees(Math.atan2(dy, dx));
+
+        if (shootSound != null) {
+            shootSound.play(0.5f);
+        }
     }
 
     public void update(float delta) {

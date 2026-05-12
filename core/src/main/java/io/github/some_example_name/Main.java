@@ -26,7 +26,12 @@ public class Main extends ApplicationAdapter {
     private boolean assetsReady;
     private float displayProgress;
 
-    private Texture bloonTexture, dartTexture, towerTexture, pathTexture, loadingTexture;
+    private Texture bloonTexture, dartTexture, towerTexture, loadingTexture;
+    private Texture pathHorizontal, pathVertical;
+    private Texture cornerLL, cornerLR, cornerUL, cornerUR;
+    private Texture grassTexture, treeLargeTexture, treeSmallTexture, barricadeTexture;
+    private Texture barrelRedTexture, barrelGreenTexture, crateTexture, sandbagTexture;
+    private Scenery scenery;
     private Music bgMusic;
 
     private static final float CAMERA_SPEED = 300f;
@@ -53,7 +58,20 @@ public class Main extends ApplicationAdapter {
         manager.load("bloon_red.png", Texture.class);
         manager.load("dart.png", Texture.class);
         manager.load("tower.png", Texture.class);
-        manager.load("path.png", Texture.class);
+        manager.load("path_h.png", Texture.class);
+        manager.load("path_v.png", Texture.class);
+        manager.load("path_corner_ll.png", Texture.class);
+        manager.load("path_corner_lr.png", Texture.class);
+        manager.load("path_corner_ul.png", Texture.class);
+        manager.load("path_corner_ur.png", Texture.class);
+        manager.load("grass.png", Texture.class);
+        manager.load("tree_large.png", Texture.class);
+        manager.load("tree_small.png", Texture.class);
+        manager.load("barricade.png", Texture.class);
+        manager.load("barrel_red.png", Texture.class);
+        manager.load("barrel_green.png", Texture.class);
+        manager.load("crate.png", Texture.class);
+        manager.load("sandbag.png", Texture.class);
         manager.load("shoot.ogg", Sound.class);
         manager.load("pop.ogg", Sound.class);
         manager.load("bgmusic.mp3", Music.class);
@@ -111,7 +129,20 @@ public class Main extends ApplicationAdapter {
         bloonTexture = manager.get("bloon_red.png", Texture.class);
         dartTexture = manager.get("dart.png", Texture.class);
         towerTexture = manager.get("tower.png", Texture.class);
-        pathTexture = manager.get("path.png", Texture.class);
+        pathHorizontal = manager.get("path_h.png", Texture.class);
+        pathVertical = manager.get("path_v.png", Texture.class);
+        cornerLL = manager.get("path_corner_ll.png", Texture.class);
+        cornerLR = manager.get("path_corner_lr.png", Texture.class);
+        cornerUL = manager.get("path_corner_ul.png", Texture.class);
+        cornerUR = manager.get("path_corner_ur.png", Texture.class);
+        grassTexture = manager.get("grass.png", Texture.class);
+        treeLargeTexture = manager.get("tree_large.png", Texture.class);
+        treeSmallTexture = manager.get("tree_small.png", Texture.class);
+        barricadeTexture = manager.get("barricade.png", Texture.class);
+        barrelRedTexture = manager.get("barrel_red.png", Texture.class);
+        barrelGreenTexture = manager.get("barrel_green.png", Texture.class);
+        crateTexture = manager.get("crate.png", Texture.class);
+        sandbagTexture = manager.get("sandbag.png", Texture.class);
 
         Dart.setShootSound(manager.get("shoot.ogg", Sound.class));
         Bloon.setPopSound(manager.get("pop.ogg", Sound.class));
@@ -121,7 +152,17 @@ public class Main extends ApplicationAdapter {
         bgMusic.setVolume(0.15f);
         bgMusic.play();
 
-        world = new GameWorld(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+        float worldW = Gdx.graphics.getWidth();
+        float worldH = Gdx.graphics.getHeight();
+        world = new GameWorld(worldW, worldH);
+
+        Texture[] decorations = new Texture[] {
+            treeLargeTexture, treeLargeTexture, treeSmallTexture, treeSmallTexture,
+            barricadeTexture, barrelRedTexture, barrelGreenTexture,
+            crateTexture, sandbagTexture
+        };
+        scenery = new Scenery(grassTexture, decorations,
+            world.waypoints, 60f, worldW, worldH, 35);
 
         Gdx.input.setInputProcessor(new InputAdapter() {
             @Override
@@ -172,15 +213,14 @@ public class Main extends ApplicationAdapter {
 
     private void renderGame() {
         world.update(Gdx.graphics.getDeltaTime());
-        ScreenUtils.clear(0.3f, 0.6f, 0.2f, 1f);
+        ScreenUtils.clear(0.15f, 0.4f, 0.15f, 1f);
 
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
 
-        Vector2[] wp = world.waypoints;
-        for (int i = 0; i < wp.length - 1; i++) {
-            drawPathSegment(wp[i].x, wp[i].y, wp[i + 1].x, wp[i + 1].y, 60f);
-        }
+        scenery.draw(batch);
+
+        drawPath();
 
         float tw = towerTexture.getWidth();
         float th = towerTexture.getHeight();
@@ -254,29 +294,77 @@ public class Main extends ApplicationAdapter {
         manager.dispose();
     }
 
+    private void drawPath() {
+        Vector2[] wp = world.waypoints;
+        float tileSize = 64f;
+        float half = tileSize / 2f;
+
+        for (int i = 0; i < wp.length - 1; i++) {
+            float x1 = wp[i].x;
+            float y1 = wp[i].y;
+            float x2 = wp[i + 1].x;
+            float y2 = wp[i + 1].y;
+
+            float dx = x2 - x1;
+            float dy = y2 - y1;
+            float len = (float) Math.sqrt(dx * dx + dy * dy);
+            float ux = dx / len;
+            float uy = dy / len;
+
+            if (i > 0) {
+                x1 += ux * half;
+                y1 += uy * half;
+            }
+            if (i < wp.length - 2) {
+                x2 -= ux * half;
+                y2 -= uy * half;
+            }
+
+            drawPathSegment(x1, y1, x2, y2, tileSize);
+        }
+
+        for (int i = 1; i < wp.length - 1; i++) {
+            Texture corner = getCornerTexture(wp[i - 1], wp[i], wp[i + 1]);
+            batch.draw(corner, wp[i].x - half, wp[i].y - half, tileSize, tileSize);
+        }
+    }
+
+    private Texture getCornerTexture(Vector2 prev, Vector2 curr, Vector2 next) {
+        float inDx = Math.signum(curr.x - prev.x);
+        float inDy = Math.signum(curr.y - prev.y);
+        float outDx = Math.signum(next.x - curr.x);
+        float outDy = Math.signum(next.y - curr.y);
+
+        if (inDx > 0 && outDy < 0) return cornerLL;
+        if (inDy < 0 && outDx > 0) return cornerUR;
+        if (inDx > 0 && outDy > 0) return cornerUL;
+        if (inDy > 0 && outDx > 0) return cornerLR;
+        if (inDx < 0 && outDy < 0) return cornerLR;
+        if (inDx < 0 && outDy > 0) return cornerUR;
+        if (inDy > 0 && outDx < 0) return cornerLL;
+        if (inDy < 0 && outDx < 0) return cornerUL;
+        return cornerUR;
+    }
+
     private void drawPathSegment(float x1, float y1, float x2, float y2, float width) {
         float dx = x2 - x1;
         float dy = y2 - y1;
+        boolean horizontal = Math.abs(dx) > Math.abs(dy);
+        Texture tex = horizontal ? pathHorizontal : pathVertical;
+        int tileSize = horizontal ? tex.getWidth() : tex.getHeight();
         float length = (float) Math.sqrt(dx * dx + dy * dy);
-        int pw = pathTexture.getWidth();
-        int ph = pathTexture.getHeight();
-        int tiles = Math.max(1, (int) (length / ph));
+        int tiles = Math.max(1, (int) (length / tileSize));
 
-        if (Math.abs(dx) > Math.abs(dy)) {
+        if (horizontal) {
             float stepX = dx / tiles;
             for (int t = 0; t < tiles; t++) {
-                batch.draw(pathTexture, x1 + stepX * t, y1 - width / 2f, Math.abs(stepX) + 1, width);
+                batch.draw(tex, x1 + stepX * t, y1 - width / 2f, Math.abs(stepX) + 1, width);
             }
         } else {
             float stepY = dy / tiles;
-            float tileLen = Math.abs(stepY);
             for (int t = 0; t < tiles; t++) {
                 float drawY = Math.min(y1 + stepY * t, y1 + stepY * (t + 1));
-                batch.draw(pathTexture,
-                    x1 - width / 2f, drawY - 2,
-                    width / 2f, (tileLen + 4) / 2f,
-                    width, tileLen + 4, 1, 1, 90,
-                    0, 0, pw, ph, false, false);
+                batch.draw(tex, x1 - width / 2f, drawY, width, Math.abs(stepY) + 1);
             }
         }
     }
